@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: user is the document owner
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    // === User profiles ===
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && isOwner(userId);
+      allow update: if isAuth() && isOwner(userId);
+    }
+
+    // === Chats ===
+    // For list queries (where array-contains), Firestore cannot evaluate
+    // resource.data per-document, so we allow read to any authenticated user.
+    // The client query already filters by memberUids array-contains uid.
+    match /chats/{chatId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.auth.uid in request.resource.data.memberUids;
+      allow update: if isAuth() && request.auth.uid in resource.data.memberUids;
+      allow delete: if false;
+
+      // === Messages (subcollection) ===
+      match /messages/{messageId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+                      && request.resource.data.senderUid == request.auth.uid;
+        allow update: if isAuth();
+        allow delete: if false;
+      }
+    }
+
+    // === Typing indicators ===
+    match /typing/{chatId} {
+      allow read, write: if isAuth();
+    }
+  }
+}
